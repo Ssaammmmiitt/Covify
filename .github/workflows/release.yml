@@ -1,0 +1,61 @@
+name: "Publish Release"
+
+on:
+  push:
+    tags:
+      - "v*" # Triggers when you push a version tag like v1.0.0
+
+permissions:
+  contents: write # Crucial: Allows the workflow to create a GitHub Release and upload binaries
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: "macos-latest" # For building macOS App / DMG
+            args: "--target universal-apple-darwin" # Builds for both Intel and Apple Silicon
+          - platform: "windows-latest" # For building Windows MSI / EXE
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Target both aarch64 (Apple Silicon) and x86_64 (Intel) on macOS
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install system dependencies (macOS only)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          # Rust needs to be able to cross-compile to universal targets
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and Publish Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }} # e.g. v1.0.0
+          releaseName: "Covify v${{ github.ref_name }}"
+          releaseBody: "See the assets below to install Covify."
+          releaseDraft: true # Creates it as a Draft so you can review before publishing
+          prerelease: false
+          args: ${{ matrix.args }}
