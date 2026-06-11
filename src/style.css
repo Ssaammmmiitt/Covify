@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #121212;       /* Near Black */
+  --color-panel: #121212;         /* Near Black Sidebar */
+  --color-card: #181818;          /* Dark Surface Card */
+  --color-button: #1f1f1f;        /* Mid Dark */
+  --color-accent: #1ed760;        /* Spotify Green */
+  --color-accent-dim: #1db954;    /* Hover Green */
+  --color-text: #ffffff;          /* White */
+  --color-muted: #b3b3b3;         /* Silver */
+  --color-border: #4d4d4d;        /* Border Gray */
+  --color-divider: #272727;       /* Separator */
+
+  --font-display: "SpotifyMixUITitle", "CircularSp", "Helvetica Neue", helvetica, arial, sans-serif;
+  --font-sans: "SpotifyMixUI", "CircularSp", "Helvetica Neue", helvetica, arial, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-pill: 500px;
+  --radius-full: 9999px;
+  
+  --shadow-elevated: rgba(0,0,0,0.3) 0px 8px 8px;
+  --shadow-dialog: rgba(0,0,0,0.5) 0px 8px 24px;
+  --shadow-inset: rgb(18,18,18) 0px 1px 0px, rgb(124,124,124) 0px 0px 0px 1px inset;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+h1, h2, .font-display {
+  font-family: var(--font-display);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}
+
+/* Hint badge fade-out animation */
+@keyframes fadeHint {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; pointer-events: none; }
+}
+
+/* Playlist Row Premium Hover Styling */
+.playlist-row {
+  transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.25s ease;
+  cursor: default;
+}
+
+.playlist-row:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.playlist-row:hover .playlist-name-text {
+  color: #ffffff;
+}
+
+/* Playlist Play Button transition */
+.playlist-play-btn {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.8);
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.2s ease;
+}
+
+.playlist-row:hover .playlist-play-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+.playlist-play-btn:hover {
+  transform: scale(1.1) !important;
+  background-color: var(--color-accent) !important;
+  color: #000000 !important;
+  box-shadow: 0 0 12px rgba(30, 215, 96, 0.4);
+}
+
