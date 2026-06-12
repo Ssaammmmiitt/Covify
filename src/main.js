@@ -370,21 +370,24 @@ Alpine.store('app', {
   },
 
   async skipToNext() {
+    this.syncSuspendedUntil = Date.now() + 3000
     try {
-      skipToNext() // fire-and-forget for instant feel
-      // Sync after Spotify processes the request
-      setTimeout(() => this.syncPlaybackState(), 800)
+      await skipToNext() // wait for it to process
+      setTimeout(() => this.syncPlaybackState(), 1000)
     } catch (err) {
       console.error('Failed to skip to next:', err)
+      this.syncSuspendedUntil = 0
     }
   },
 
   async skipToPrevious() {
+    this.syncSuspendedUntil = Date.now() + 3000
     try {
-      skipToPrevious() // fire-and-forget
-      setTimeout(() => this.syncPlaybackState(), 800)
+      await skipToPrevious()
+      setTimeout(() => this.syncPlaybackState(), 1000)
     } catch (err) {
       console.error('Failed to skip to previous:', err)
+      this.syncSuspendedUntil = 0
     }
   },
 
@@ -395,11 +398,11 @@ Alpine.store('app', {
       if (!state) {
         // No active playback state (e.g., no active device)
         this.isPlaying = false
-        this.currentTrack = null
+        // Keep currentTrack if it exists so the box doesn't disappear
         this.progress = 0
         this.progressMs = 0
         try {
-          updatePlaybackState(null, false)
+          updatePlaybackState(this.currentTrack?.uri, false)
         } catch (e) {}
         return
       }
@@ -407,17 +410,19 @@ Alpine.store('app', {
       const oldTrackId = this.currentTrack?.id
       
       this.isPlaying = state.is_playing
-      this.currentTrack = state.item ? {
-        id: state.item.id,
-        name: state.item.name,
-        artists: state.item.artists ? state.item.artists.map(a => a.name).join(', ') : 'Unknown',
-        imageUrl: state.item.album?.images?.[0]?.url || null,
-        uri: state.item.uri,
-        duration: state.item.duration_ms || 1, // avoid div by zero
-      } : null
+      if (state.item) {
+        this.currentTrack = {
+          id: state.item.id,
+          name: state.item.name,
+          artists: state.item.artists ? state.item.artists.map(a => a.name).join(', ') : 'Unknown',
+          imageUrl: state.item.album?.images?.[0]?.url || null,
+          uri: state.item.uri,
+          duration: state.item.duration_ms || 1, // avoid div by zero
+        }
+      }
       this.progressMs = state.progress_ms || 0
       this.lastStateSyncTime = Date.now()
-      this.progress = state.item && state.progress_ms ? state.progress_ms / (state.item.duration_ms || 1) : 0
+      this.progress = this.currentTrack && state.progress_ms ? state.progress_ms / (this.currentTrack.duration || 1) : 0
 
       // Sync the 3D scene equalizer
       try {
@@ -426,7 +431,7 @@ Alpine.store('app', {
 
       // If active song changed, reload queue tracks to keep the sphere current
       const newTrackId = this.currentTrack?.id
-      if (newTrackId !== oldTrackId && newTrackId) {
+      if (oldTrackId && newTrackId !== oldTrackId) {
         this.selectPlaylist('queue')
       }
     } catch (err) {
