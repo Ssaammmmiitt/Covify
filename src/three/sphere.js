@@ -217,17 +217,17 @@ export function destroyScene() {
  * Public API: build/rebuild the sphere from a track list.
  * Called directly from main.js after scene is confirmed ready.
  */
-export function buildSphereFromTracks(tracks) {
+export function buildSphereFromTracks(tracks, artScale = 1) {
   if (!renderer) {
     console.warn('[Covify 3D] buildSphereFromTracks called before scene was initialized')
     return
   }
-  buildScene(tracks)
+  buildScene(tracks, artScale)
 }
 
 // ── Scene Building ────────────────────────────────────────
 
-async function buildScene(tracks) {
+async function buildScene(tracks, artScale = 1) {
   clearScene()
 
   if (!tracks || tracks.length === 0) return
@@ -277,7 +277,7 @@ async function buildScene(tracks) {
     }
   }
 
-  createArtMeshes(tracks, uniqueImages)
+  createArtMeshes(tracks, uniqueImages, artScale)
 
   if (currentMode === MODE.SPHERE) {
     arrangeAsSphere(true)
@@ -286,8 +286,8 @@ async function buildScene(tracks) {
   }
 }
 
-function createArtMeshes(tracks, textureMap) {
-  const artSize = calculateArtSize(tracks.length)
+function createArtMeshes(tracks, textureMap, artScale = 1) {
+  const artSize = calculateArtSize(tracks.length) * artScale
 
   tracks.forEach((track, i) => {
     const tex = textureMap.get(track.imageUrl) || createFallbackTexture()

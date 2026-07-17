@@ -184,22 +184,6 @@ export async function searchPlaylists(query, limit = 10, offset = 0) {
   }
 }
 
-/**
- * Fetch playlist metadata. Track listing may be absent for non-owned playlists.
- */
-export async function getPlaylistDetails(playlistId) {
-  const data = await spotifyFetch(`/playlists/${playlistId}`)
-  return {
-    id: data.id,
-    name: data.name,
-    description: data.description || '',
-    imageUrl: data.images?.[0]?.url || null,
-    uri: data.uri,
-    owner: data.owner?.display_name || 'Unknown',
-    trackCount: data.items?.total ?? data.tracks?.total ?? 0,
-  }
-}
-
 // ── Playback State ────────────────────────────────────────
 
 export async function getCurrentPlayback() {

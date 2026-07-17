@@ -2,6 +2,8 @@
 
 Covify is a beautiful, interactive 3D visualizer for your Spotify music. It loads your music and renders your album art covers as a floating 3D sphere or falling cards.
 
+**Current version:** `1.2.0`
+
 ## Screenshots
 
 ![3D Album Sphere](./Screenshots/Screenshot%202026-06-16%20at%2014.16.31.png)

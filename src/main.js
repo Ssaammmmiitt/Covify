@@ -3,7 +3,7 @@ import Alpine from 'alpinejs'
 import { listen } from '@tauri-apps/api/event'
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { startAuthFlow, exchangeCodeForTokens, isAuthenticated, clearTokens, getStoredToken, IS_TAURI } from './spotify/auth.js'
-import { getCurrentUser, getUserPlaylists, getQueueTracks, getPlaylistTracks, getCurrentPlayback, playTrack, pausePlayback, resumePlayback, skipToNext, skipToPrevious, seekTo, searchPlaylists, getPlaylistDetails } from './spotify/api.js'
+import { getCurrentUser, getUserPlaylists, getQueueTracks, getPlaylistTracks, getCurrentPlayback, playTrack, pausePlayback, resumePlayback, skipToNext, skipToPrevious, seekTo, searchPlaylists } from './spotify/api.js'
 import { initScene, switchMode, getCurrentMode, destroyScene, buildSphereFromTracks, updatePlaybackState } from './three/sphere.js'
 
 window.Alpine = Alpine
@@ -50,8 +50,7 @@ Alpine.store('app', {
 
     // Listen for track clicks from the 3D scene
     window.addEventListener('covify-track-clicked', async (e) => {
-      const track = e.detail
-      this.playTrackFromSphere(track)
+      this.playSelectedTrack(e.detail)
     })
 
     // Listen for enlarged view events
@@ -484,13 +483,6 @@ Alpine.store('app', {
 
   // ── Search Methods ──────────────────────────────────────
 
-  toggleSearch() {
-    this.showSearch = !this.showSearch
-    if (!this.showSearch) {
-      this.clearSearch()
-    }
-  },
-
   clearSearch() {
     this.searchQuery = ''
     this.searchResults = []
@@ -556,7 +548,7 @@ Alpine.store('app', {
       this.viewingPlaylistTracks = tracks
 
       if (tracks.length > 0) {
-        buildSphereFromTracks(tracks)
+        buildSphereFromTracks(tracks, 1.18)
       } else {
         this.playlistTracksUnavailable = true
       }
@@ -568,6 +560,49 @@ Alpine.store('app', {
       } else {
         this.playlistDetailError = msg || 'Failed to load tracks'
       }
+    } finally {
+      this.isLoadingPlaylistDetail = false
+    }
+  },
+
+  async openCurrentQueue() {
+    const queuePlaylist = this.playlists.find(p => p.id === 'queue') || {
+      id: 'queue',
+      name: 'Current Queue',
+      imageUrl: this.currentTrack?.imageUrl || null,
+      uri: null,
+      owner: this.user?.display_name || 'Spotify',
+    }
+
+    this.viewingPlaylist = {
+      ...queuePlaylist,
+      imageUrl: this.currentTrack?.imageUrl || queuePlaylist.imageUrl,
+      owner: this.user?.display_name || 'Spotify',
+    }
+    this.viewingPlaylistTracks = []
+    this.isLoadingPlaylistDetail = true
+    this.playlistDetailError = null
+    this.playlistTracksUnavailable = false
+    this.playlistViewMode = 'sphere'
+
+    try {
+      const queueTracks = await getQueueTracks()
+      const tracksWithCurrent = this.currentTrack
+        && !queueTracks.some(track => track.uri === this.currentTrack.uri)
+        ? [this.currentTrack, ...queueTracks]
+        : queueTracks
+      this.tracks = tracksWithCurrent
+      this.viewingPlaylistTracks = tracksWithCurrent
+      this.viewingPlaylist.trackCount = tracksWithCurrent.length
+
+      if (tracksWithCurrent.length > 0) {
+        buildSphereFromTracks(tracksWithCurrent, 1.18)
+      } else {
+        this.playlistDetailError = 'Your Spotify queue is currently empty.'
+      }
+    } catch (err) {
+      console.error('[Covify] Failed to load current queue:', err)
+      this.playlistDetailError = err.message || 'Failed to load the current queue.'
     } finally {
       this.isLoadingPlaylistDetail = false
     }
@@ -607,8 +642,21 @@ Alpine.store('app', {
     }
   },
 
+  playSelectedTrack(track) {
+    if (this.viewingPlaylist) {
+      return this.playFromPlaylistDetail(track)
+    }
+    return this.playTrackFromSphere(track)
+  },
+
   async playEntireViewingPlaylist() {
-    if (!this.viewingPlaylist?.uri) return
+    if (!this.viewingPlaylist) return
+    if (this.viewingPlaylist.id === 'queue') {
+      const firstTrack = this.viewingPlaylistTracks[0]
+      if (firstTrack) await this.playTrackFromSphere(firstTrack)
+      return
+    }
+    if (!this.viewingPlaylist.uri) return
     this.syncSuspendedUntil = Date.now() + 3000
     this.isPlaying = true
     this.currentTrack = null
@@ -624,7 +672,7 @@ Alpine.store('app', {
         if (queueTracks.length > 0) {
           this.viewingPlaylistTracks = queueTracks
           this.playlistTracksUnavailable = false
-          buildSphereFromTracks(queueTracks)
+          buildSphereFromTracks(queueTracks, 1.18)
         }
       }, 1500)
     } catch (err) {

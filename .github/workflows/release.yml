@@ -53,9 +53,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }} # e.g. v1.0.0
-          releaseName: "Covify v${{ github.ref_name }}"
-          releaseBody: "See the assets below to install Covify."
+          tagName: ${{ github.ref_name }} # e.g. v1.2.0
+          releaseName: "Covify ${{ github.ref_name }}"
+          releaseBody: |
+            ## Covify ${{ github.ref_name }}
+
+            ### What's new
+            - Global playlist search
+            - Playlist detail views (3D sphere + list)
+            - Playable/scrollable sphere when viewing playlists
+            - Current Queue opens its own sphere view
+            - Spotify Web API Feb 2026 Dev Mode compatibility
+
+            ### Install
+            Download the installer for your platform from the assets below.
+            - **macOS**: `.dmg` or `.app` (universal)
+            - **Windows**: `.msi` / `.exe`
+
+            Requires Spotify Premium and an active Spotify player.
           releaseDraft: true # Creates it as a Draft so you can review before publishing
           prerelease: false
           args: ${{ matrix.args }}
