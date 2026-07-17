@@ -3,7 +3,7 @@ import Alpine from 'alpinejs'
 import { listen } from '@tauri-apps/api/event'
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { startAuthFlow, exchangeCodeForTokens, isAuthenticated, clearTokens, getStoredToken, IS_TAURI } from './spotify/auth.js'
-import { getCurrentUser, getUserPlaylists, getQueueTracks, getCurrentPlayback, playTrack, pausePlayback, resumePlayback, skipToNext, skipToPrevious, seekTo } from './spotify/api.js'
+import { getCurrentUser, getUserPlaylists, getQueueTracks, getPlaylistTracks, getCurrentPlayback, playTrack, pausePlayback, resumePlayback, skipToNext, skipToPrevious, seekTo, searchPlaylists, getPlaylistDetails } from './spotify/api.js'
 import { initScene, switchMode, getCurrentMode, destroyScene, buildSphereFromTracks, updatePlaybackState } from './three/sphere.js'
 
 window.Alpine = Alpine
@@ -26,6 +26,24 @@ Alpine.store('app', {
   enlargedTrack: null,
   playlistsError: null,
   tracksError: null,
+
+  // Search state
+  searchQuery: '',
+  searchResults: [],
+  searchTotal: 0,
+  searchOffset: 0,
+  isSearching: false,
+  searchError: null,
+  showSearch: false,
+  searchDebounceTimer: null,
+
+  // Playlist detail view state
+  viewingPlaylist: null,
+  viewingPlaylistTracks: [],
+  playlistViewMode: 'sphere',
+  isLoadingPlaylistDetail: false,
+  playlistDetailError: null,
+  playlistTracksUnavailable: false,
 
   async init() {
     console.log('Alpine store initialized, auth state:', this.isAuthenticated)
@@ -463,6 +481,157 @@ Alpine.store('app', {
   },
 
 
+
+  // ── Search Methods ──────────────────────────────────────
+
+  toggleSearch() {
+    this.showSearch = !this.showSearch
+    if (!this.showSearch) {
+      this.clearSearch()
+    }
+  },
+
+  clearSearch() {
+    this.searchQuery = ''
+    this.searchResults = []
+    this.searchTotal = 0
+    this.searchOffset = 0
+    this.searchError = null
+    this.isSearching = false
+    if (this.searchDebounceTimer) clearTimeout(this.searchDebounceTimer)
+  },
+
+  onSearchInput() {
+    if (this.searchDebounceTimer) clearTimeout(this.searchDebounceTimer)
+    if (!this.searchQuery.trim()) {
+      this.searchResults = []
+      this.searchTotal = 0
+      this.searchOffset = 0
+      return
+    }
+    this.searchDebounceTimer = setTimeout(() => {
+      this.searchOffset = 0
+      this.performSearch()
+    }, 350)
+  },
+
+  async performSearch() {
+    const q = this.searchQuery.trim()
+    if (!q) return
+    this.isSearching = true
+    this.searchError = null
+    try {
+      const result = await searchPlaylists(q, 10, this.searchOffset)
+      if (this.searchOffset === 0) {
+        this.searchResults = result.items
+      } else {
+        this.searchResults = [...this.searchResults, ...result.items]
+      }
+      this.searchTotal = result.total
+    } catch (err) {
+      console.error('[Covify] Search failed:', err)
+      this.searchError = err.message || 'Search failed'
+    } finally {
+      this.isSearching = false
+    }
+  },
+
+  async loadMoreResults() {
+    this.searchOffset += 10
+    await this.performSearch()
+  },
+
+  // ── Playlist Detail View ──────────────────────────────────
+
+  async openPlaylistDetail(playlist) {
+    this.viewingPlaylist = playlist
+    this.viewingPlaylistTracks = []
+    this.isLoadingPlaylistDetail = true
+    this.playlistDetailError = null
+    this.playlistViewMode = 'sphere'
+    this.playlistTracksUnavailable = false
+
+    try {
+      const tracks = await getPlaylistTracks(playlist.id)
+      this.viewingPlaylistTracks = tracks
+
+      if (tracks.length > 0) {
+        buildSphereFromTracks(tracks)
+      } else {
+        this.playlistTracksUnavailable = true
+      }
+    } catch (err) {
+      console.error('[Covify] Failed to load playlist tracks:', err)
+      const msg = err.message || ''
+      if (msg.includes('403') || msg.includes('Forbidden')) {
+        this.playlistTracksUnavailable = true
+      } else {
+        this.playlistDetailError = msg || 'Failed to load tracks'
+      }
+    } finally {
+      this.isLoadingPlaylistDetail = false
+    }
+  },
+
+  closePlaylistDetail() {
+    this.viewingPlaylist = null
+    this.viewingPlaylistTracks = []
+    this.playlistDetailError = null
+    this.playlistTracksUnavailable = false
+    if (this.tracks && this.tracks.length > 0) {
+      buildSphereFromTracks(this.tracks)
+    }
+  },
+
+  togglePlaylistViewMode() {
+    this.playlistViewMode = this.playlistViewMode === 'sphere' ? 'list' : 'sphere'
+  },
+
+  async playFromPlaylistDetail(track) {
+    if (!track || !this.viewingPlaylist) return
+    this.currentTrack = track
+    this.isPlaying = true
+    this.progress = 0
+    this.progressMs = 0
+    this.lastStateSyncTime = Date.now()
+    this.syncSuspendedUntil = Date.now() + 3000
+    try {
+      updatePlaybackState(track.uri, true)
+    } catch (e) {}
+    try {
+      const trackUris = this.viewingPlaylistTracks.map(t => t.uri)
+      await playTrack(track.uri, this.viewingPlaylist.uri, trackUris)
+    } catch (err) {
+      console.error('Failed to play track from playlist detail:', err)
+      this.syncSuspendedUntil = 0
+    }
+  },
+
+  async playEntireViewingPlaylist() {
+    if (!this.viewingPlaylist?.uri) return
+    this.syncSuspendedUntil = Date.now() + 3000
+    this.isPlaying = true
+    this.currentTrack = null
+    this.progress = 0
+    this.progressMs = 0
+    this.lastStateSyncTime = Date.now()
+    try {
+      await playTrack(null, this.viewingPlaylist.uri)
+      // After playing, load the queue to populate sphere with the playlist tracks
+      setTimeout(async () => {
+        await this.syncPlaybackState()
+        const queueTracks = await getQueueTracks()
+        if (queueTracks.length > 0) {
+          this.viewingPlaylistTracks = queueTracks
+          this.playlistTracksUnavailable = false
+          buildSphereFromTracks(queueTracks)
+        }
+      }, 1500)
+    } catch (err) {
+      console.error('Failed to play playlist:', err)
+      this.syncSuspendedUntil = 0
+    }
+  },
 
   async refreshAll() {
     this.isLoading = true

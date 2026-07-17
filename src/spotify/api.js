@@ -24,16 +24,13 @@ async function spotifyFetch(path, options = {}) {
     },
   })
 
-  // Handle Rate Limiting (429)
   if (res.status === 429) {
     const retryAfter = parseInt(res.headers.get('Retry-After') || '1', 10)
     console.warn(`[Spotify API] 429 Rate limited. Retrying after ${retryAfter}s...`)
     await new Promise(resolve => setTimeout(resolve, retryAfter * 1000))
-    // Retry the exact same request
     return spotifyFetch(path, options)
   }
 
-  // Token expired mid-session
   if (res.status === 401) {
     console.warn('Access token expired. Retrying request with refreshed token...')
     token = await refreshAccessToken()
@@ -46,7 +43,6 @@ async function spotifyFetch(path, options = {}) {
       },
     }).then(async (retryRes) => {
       if (retryRes.status === 429) {
-        // Simple fallback if rate limited on retry, could recurse but keep it simple
         const wait = parseInt(retryRes.headers.get('Retry-After') || '1', 10)
         await new Promise(r => setTimeout(r, wait * 1000))
         return spotifyFetch(path, options)
@@ -62,7 +58,7 @@ async function spotifyFetch(path, options = {}) {
     })
   }
 
-  if (res.status === 204) return null // No content (e.g. play/pause commands)
+  if (res.status === 204) return null
   if (!res.ok) {
     const errText = await res.text()
     throw new Error(`Spotify API error ${res.status}: ${path} - ${errText}`)
@@ -73,7 +69,7 @@ async function spotifyFetch(path, options = {}) {
   try {
     return JSON.parse(text)
   } catch (err) {
-    return text // return plain text if not JSON (e.g., snapshot IDs)
+    return text
   }
 }
 
@@ -87,39 +83,61 @@ export async function getCurrentUser() {
 
 export async function getUserPlaylists(limit = 50) {
   const data = await spotifyFetch(`/me/playlists?limit=${limit}`)
+  if (!data?.items) return []
   return data.items.map(p => ({
     id: p.id,
     name: p.name,
-    trackCount: p.tracks?.total || 0,
+    trackCount: p.items?.total ?? p.tracks?.total ?? 0,
     imageUrl: p.images?.[0]?.url || null,
     uri: p.uri,
+    owner: p.owner?.display_name || 'Unknown',
+    isOwned: true,
   }))
 }
 
+/**
+ * Fetch tracks for a playlist the user owns or collaborates on.
+ * Uses the new /items endpoint (Feb 2026 migration).
+ * Returns empty array for non-owned playlists (API returns 403).
+ */
 export async function getPlaylistTracks(playlistId) {
   const tracks = []
-  // Reverting to /tracks as it is the correct documented API path
-  let url = `/playlists/${playlistId}/tracks?limit=100&fields=next,items(track(id,name,uri,duration_ms,album(id,name,images),artists(name)))`
+  let url = `/playlists/${playlistId}/items?limit=50`
 
   while (url) {
-    const data = await spotifyFetch(url)
+    let data
+    try {
+      data = await spotifyFetch(url)
+    } catch (err) {
+      if (err.message?.includes('403') || err.message?.includes('Forbidden')) {
+        console.warn(`[Spotify API] Cannot access tracks for playlist ${playlistId} (not owned)`)
+        return tracks
+      }
+      throw err
+    }
+    if (!data || !data.items) break
+
     const valid = data.items
-      .filter(item => item.track && item.track.id) // filter out local files
-      .map(item => ({
-        id: item.track.id,
-        name: item.track.name,
-        uri: item.track.uri,
-        duration: item.track.duration_ms,
-        artists: item.track.artists.map(a => a.name).join(', '),
-        albumName: item.track.album.name,
-        // Prefer 300px image for textures (not too heavy, not too small)
-        imageUrl: item.track.album.images?.find(img => img.width <= 300)?.url
-                  || item.track.album.images?.[0]?.url
-                  || null,
-      }))
+      .filter(entry => {
+        const t = entry.item || entry.track
+        return t && t.id
+      })
+      .map(entry => {
+        const t = entry.item || entry.track
+        return {
+          id: t.id,
+          name: t.name,
+          uri: t.uri,
+          duration: t.duration_ms,
+          artists: t.artists?.map(a => a.name).join(', ') || 'Unknown',
+          albumName: t.album?.name || 'Unknown Album',
+          imageUrl: t.album?.images?.find(img => img.width <= 300)?.url
+                    || t.album?.images?.[0]?.url
+                    || null,
+        }
+      })
     tracks.push(...valid)
-    // Handle pagination: next is a full URL
-    url = data.next ? data.next.replace(BASE, '') : null
+    url = data.next || null
   }
 
   return tracks
@@ -136,12 +154,50 @@ export async function getQueueTracks() {
       name: track.name,
       uri: track.uri,
       duration: track.duration_ms,
-      artists: track.artists.map(a => a.name).join(', '),
-      albumName: track.album.name,
-      imageUrl: track.album.images?.find(img => img.width <= 300)?.url
-                || track.album.images?.[0]?.url
+      artists: track.artists?.map(a => a.name).join(', ') || 'Unknown',
+      albumName: track.album?.name || 'Unknown Album',
+      imageUrl: track.album?.images?.find(img => img.width <= 300)?.url
+                || track.album?.images?.[0]?.url
                 || null,
     }))
+}
+
+// ── Search ────────────────────────────────────────────────
+// Feb 2026: limit max is 10, default is 5
+
+export async function searchPlaylists(query, limit = 10, offset = 0) {
+  const clampedLimit = Math.min(limit, 10)
+  const data = await spotifyFetch(`/search?q=${encodeURIComponent(query)}&type=playlist&limit=${clampedLimit}&offset=${offset}`)
+  if (!data?.playlists?.items) return { items: [], total: 0 }
+  return {
+    items: data.playlists.items.filter(Boolean).map(p => ({
+      id: p.id,
+      name: p.name,
+      description: p.description || '',
+      trackCount: p.items?.total ?? p.tracks?.total ?? 0,
+      imageUrl: p.images?.[0]?.url || null,
+      uri: p.uri,
+      owner: p.owner?.display_name || 'Unknown',
+    })),
+    total: data.playlists.total || 0,
+    next: data.playlists.next || null,
+  }
+}
+
+/**
+ * Fetch playlist metadata. Track listing may be absent for non-owned playlists.
+ */
+export async function getPlaylistDetails(playlistId) {
+  const data = await spotifyFetch(`/playlists/${playlistId}`)
+  return {
+    id: data.id,
+    name: data.name,
+    description: data.description || '',
+    imageUrl: data.images?.[0]?.url || null,
+    uri: data.uri,
+    owner: data.owner?.display_name || 'Unknown',
+    trackCount: data.items?.total ?? data.tracks?.total ?? 0,
+  }
 }
 
 // ── Playback State ────────────────────────────────────────
