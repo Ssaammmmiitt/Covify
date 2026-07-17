@@ -53,7 +53,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }} # e.g. v1.2.0
+          tagName: ${{ github.ref_name }} # e.g. v1.2.1
           releaseName: "Covify ${{ github.ref_name }}"
           releaseBody: |
             ## Covify ${{ github.ref_name }}
@@ -63,7 +63,10 @@ jobs:
             - Playlist detail views (3D sphere + list)
             - Playable/scrollable sphere when viewing playlists
             - Current Queue opens its own sphere view
+            - Secondary List view for current sphere tracks
+            - Add to queue from list view
             - Spotify Web API Feb 2026 Dev Mode compatibility
+            - Faster loads via vendor code-splitting (Three.js / Alpine / Tauri)
 
             ### Install
             Download the installer for your platform from the assets below.

@@ -3,7 +3,7 @@ import Alpine from 'alpinejs'
 import { listen } from '@tauri-apps/api/event'
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { startAuthFlow, exchangeCodeForTokens, isAuthenticated, clearTokens, getStoredToken, IS_TAURI } from './spotify/auth.js'
-import { getCurrentUser, getUserPlaylists, getQueueTracks, getPlaylistTracks, getCurrentPlayback, playTrack, pausePlayback, resumePlayback, skipToNext, skipToPrevious, seekTo, searchPlaylists } from './spotify/api.js'
+import { getCurrentUser, getUserPlaylists, getQueueTracks, getPlaylistTracks, getCurrentPlayback, playTrack, pausePlayback, resumePlayback, skipToNext, skipToPrevious, seekTo, searchPlaylists, addToQueue } from './spotify/api.js'
 import { initScene, switchMode, getCurrentMode, destroyScene, buildSphereFromTracks, updatePlaybackState } from './three/sphere.js'
 
 window.Alpine = Alpine
@@ -23,9 +23,12 @@ Alpine.store('app', {
   authError: null,
   sceneMode: 'sphere',
   sceneInitialized: false,
+  homeListView: false,
   enlargedTrack: null,
   playlistsError: null,
   tracksError: null,
+  queueToast: null,
+  queueToastTimer: null,
 
   // Search state
   searchQuery: '',
@@ -187,6 +190,8 @@ Alpine.store('app', {
     this.progress = 0
     this.sceneInitialized = false
     this.enlargedTrack = null
+    this.homeListView = false
+    this.queueToast = null
   },
 
   pollingInterval: null,
@@ -282,9 +287,36 @@ Alpine.store('app', {
   },
 
   toggleSceneMode() {
+    // Keep sphere as the primary experience — list view is a separate overlay
+    this.homeListView = false
     const newMode = this.sceneMode === 'sphere' ? 'drop' : 'sphere'
     this.sceneMode = newMode
     switchMode(newMode)
+  },
+
+  toggleHomeListView() {
+    this.homeListView = !this.homeListView
+  },
+
+  async addTrackToQueue(track) {
+    if (!track?.uri) return
+    try {
+      await addToQueue(track.uri)
+      this.showQueueToast(`Queued · ${track.name}`)
+    } catch (err) {
+      console.error('Failed to add track to queue:', err)
+      this.showQueueToast(err.message?.includes('404') || err.message?.includes('NO_ACTIVE_DEVICE')
+        ? 'Open Spotify and start playback first'
+        : 'Could not add to queue')
+    }
+  },
+
+  showQueueToast(message) {
+    this.queueToast = message
+    if (this.queueToastTimer) clearTimeout(this.queueToastTimer)
+    this.queueToastTimer = setTimeout(() => {
+      this.queueToast = null
+    }, 2200)
   },
 
   closeEnlargedView() {
@@ -536,6 +568,7 @@ Alpine.store('app', {
   // ── Playlist Detail View ──────────────────────────────────
 
   async openPlaylistDetail(playlist) {
+    this.homeListView = false
     this.viewingPlaylist = playlist
     this.viewingPlaylistTracks = []
     this.isLoadingPlaylistDetail = true
@@ -566,6 +599,7 @@ Alpine.store('app', {
   },
 
   async openCurrentQueue() {
+    this.homeListView = false
     const queuePlaylist = this.playlists.find(p => p.id === 'queue') || {
       id: 'queue',
       name: 'Current Queue',

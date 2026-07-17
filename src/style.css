@@ -129,6 +129,19 @@ h1, h2, .font-display {
   background-color: rgba(255, 255, 255, 0.06);
 }
 
+.queue-add-btn {
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.track-list-row:hover .queue-add-btn {
+  opacity: 1;
+}
+
+.queue-add-btn:hover {
+  transform: scale(1.08);
+}
+
 /* Playlist list scroll */
 .playlist-list-scroll {
   scrollbar-width: thin;

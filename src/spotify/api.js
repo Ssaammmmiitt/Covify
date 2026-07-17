@@ -233,3 +233,10 @@ export async function skipToPrevious() {
 export async function seekTo(positionMs) {
   return spotifyFetch(`/me/player/seek?position_ms=${positionMs}`, { method: 'PUT' })
 }
+
+export async function addToQueue(trackUri) {
+  if (!trackUri) throw new Error('No track URI provided')
+  return spotifyFetch(`/me/player/queue?uri=${encodeURIComponent(trackUri)}`, {
+    method: 'POST',
+  })
+}
