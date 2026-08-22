@@ -1,6 +1,6 @@
 # Covify 3D
 
-Covify is a beautiful, interactive 3D visualizer for your Spotify music. It loads your music and renders your album art covers as a floating 3D sphere or falling cards.
+Covify is an interactive 3D Spotify visualizer. It renders your **active Spotify queue** as album-art covers in a floating sphere (or a falling-card “drop” layout), and lets you search playlists, open them in detail, and control playback from the same UI.
 
 **Current version:** `1.2.1`
 
@@ -17,77 +17,167 @@ Covify is a beautiful, interactive 3D visualizer for your Spotify music. It load
 
 ---
 
-## Requirements to Play Music
-For the 3D buttons and controls (play, pause, skip, seek) to work:
-1. **Spotify Premium**: Spotify's API only allows premium accounts to control music.
-2. **Active Player**: You must have Spotify open and running somewhere (your phone, browser, or desktop app) so Covify can connect to it.
-3. **Spotify App**: Covify will try to automatically open the Spotify desktop application in the background when it launches.
+## How it works
+
+The **home sphere always visualizes your Spotify queue**, not a library playlist by itself. When you play a playlist from the sidebar or search, Spotify starts that playlist and Covify reloads the queue into the 3D scene.
+
+- **Sphere** is the primary experience (drag to orbit, scroll to zoom, hover to play).
+- **Drop** is an alternate 3D layout.
+- **List** is a secondary overlay for browsing the same tracks as a normal track list.
+
+---
+
+## Requirements
+
+1. **Spotify Premium** — Web API playback control requires Premium.
+2. **Active player** — Spotify must be open somewhere (desktop, phone, or web) so Covify has a device to control.
+3. **Desktop helper** — In the Tauri app, Covify tries to open the Spotify desktop app on launch (macOS / Windows).
 
 ---
 
 ## Features
 
-- **3D Album Art Sphere** — Your queue and playlist album art rendered as an interactive 3D sphere using Three.js
-- **Drop / Card View** — Alternative cascade layout with physics-based falling animation
-- **Playlist Search** — Search Spotify's global catalog for any playlist, view metadata, and play directly
-- **Dual View Modes** — View playlist tracks as a 3D sphere or a traditional list view
-- **Play to Explore** — For playlists you don't own, Covify plays them and loads the queue into the sphere (Spotify API restriction for Dev Mode apps)
-- **Now Playing Bar** — Real-time playback controls with progress seek, skip, and play/pause
-- **Enlarged Art View** — Click any album cover to zoom in and see track details
+- **3D album sphere** — Queue covers on a golden-angle sphere with orbit, zoom, hover play, and a now-playing equalizer overlay
+- **Drop cascade** — Alternate physics-style falling-card layout
+- **Secondary List view** — Browse current sphere tracks as a list; return to Sphere anytime
+- **Playlist search** — Search Spotify’s catalog, paginate results, open any playlist
+- **Playlist detail** — Sphere or list for owned/collaborative playlists; **Play to Explore** for others (API restriction)
+- **Current Queue** — Sidebar entry opens the live queue in its own sphere/list detail view
+- **Add to queue** — `+` on list rows queues a track on Spotify
+- **Now playing bar** — Play/pause, skip, seek with hover timestamps
+- **Enlarged cover** — Click art to zoom in and play that track
+- **PKCE OAuth** — Secure Spotify login with no client secret in the app
 
 ---
 
-## How to Setup and Run
+## Stack
 
-### 1. Configure your API Keys
-Create a file named `.env` in the main folder and add your Spotify Client ID (you can copy `.env.example` to start):
+| Layer | Tech |
+|-------|------|
+| UI | Alpine.js, Tailwind CSS v4 |
+| 3D | Three.js |
+| Build | Vite 8 |
+| Desktop | Tauri 2 (Rust) |
+| Auth | Spotify Authorization Code + PKCE |
+
+---
+
+## Setup
+
+### 1. Spotify Developer Dashboard
+
+Create an app and set these **Redirect URIs** (do not use `http://localhost`):
+
+| Mode | Redirect URI |
+|------|----------------|
+| Browser / Vite | `http://127.0.0.1:5173/callback` |
+| Desktop (Tauri) | `covify://callback` |
+
+Scopes used by Covify:
+
+```text
+user-read-playback-state
+user-modify-playback-state
+user-read-currently-playing
+playlist-read-private
+playlist-read-collaborative
+user-library-read
+```
+
+### 2. Environment
+
+Copy `.env.example` to `.env` and add your Client ID:
+
 ```env
 VITE_SPOTIFY_CLIENT_ID=your_spotify_client_id_here
 ```
 
-### 2. Install dependencies
-Open your terminal in this folder and run:
+### 3. Install
+
 ```bash
 npm install
 ```
 
-### 3. Run the Web App (Browser Mode)
-To run the visualizer in your web browser:
+### 4. Run
+
+**Browser**
+
 ```bash
 npm run dev:local
 ```
-This will start the server and open the app in your browser at `http://127.0.0.1:5173`.
 
-### 4. Run the Desktop App (Development Mode)
-To run the native desktop window app on your computer:
+Opens `http://127.0.0.1:5173`.
+
+**Desktop (dev)**
+
 ```bash
 npm run tauri dev
 ```
 
-### 5. Build the Desktop App Installer (Production Mode)
-To package the app into an installer (.dmg for macOS, or .msi for Windows), run:
+**Desktop installer (production)**
+
 ```bash
 npm run tauri build
 ```
-The installer files will be generated in `src-tauri/target/release/bundle/`.
+
+Installers land in `src-tauri/target/release/bundle/` (`.dmg` / `.app` on macOS, `.msi` / `.exe` on Windows).
+
+Other scripts: `npm run build` (Vite production), `npm run preview`.
 
 ---
 
-## Interactive Controls
-- **Orbit View**: Click and drag on the background to rotate the 3D sphere.
-- **Enlarge Cover**: Click on any album art cover to zoom in and see its details.
-- **Play Song**: Hover over an album cover and click the green play button that appears to play that track.
-- **Switch Views**: Click the "SPHERE" or "DROP" buttons at the top right to change the layout style.
-- **Timeline Seek**: Hover over the bottom timeline progress bar to see timestamps, and click anywhere on the bar to seek the song.
-- **Search Playlists**: Use the search bar in the sidebar to find any playlist on Spotify.
-- **View Playlist**: Click a search result to open it — your own playlists show track listings, others use "Play to Explore".
-- **Refresh**: Click the "REFRESH" button at the top right to sync the 3D scene with your current Spotify state.
+## Controls
+
+### Mouse / UI
+
+| Action | How |
+|--------|-----|
+| Orbit | Drag on the scene |
+| Zoom | Scroll |
+| Play a cover | Hover → green play button |
+| Enlarge cover | Click album art |
+| Sphere / Drop | Top-right **SPHERE** / **DROP** |
+| List (secondary) | Top-right **List** |
+| Seek | Click the now-playing progress bar |
+| Search | Sidebar search field |
+| Open playlist | Click a search result or library playlist |
+| Current Queue | Click **Current Queue** in the sidebar |
+| Add to queue | `+` in list view |
+| Refresh | Top-right **REFRESH** |
+
+### Keyboard
+
+| Key | Action |
+|-----|--------|
+| `Space` | Play / pause |
+| `←` / `→` | Previous / next track |
+| `M` | Toggle Sphere ↔ Drop |
+| `Esc` | Close enlarged view or playlist detail |
+
+Shortcuts are ignored while typing in the search field.
 
 ---
 
-## Spotify API Notes
-This app uses the Spotify Web API with the Feb 2026 Dev Mode restrictions:
-- **Search**: Limited to 10 results per request (paginated)
-- **Playlist tracks**: Only available for playlists you own or collaborate on (`/playlists/{id}/items`)
-- **Non-owned playlists**: Metadata only — track listings are restricted. Covify works around this by playing the playlist and loading the queue.
-- **Auth**: Authorization Code with PKCE flow (no client secret required)
+## Spotify API notes (Dev Mode)
+
+Covify targets the Spotify Web API under **February 2026 Development Mode** limits:
+
+- **Search** — Max 10 results per request (paginated with Load More)
+- **Playlist tracks** — `/playlists/{id}/items` only for playlists you **own or collaborate on**
+- **Other playlists** — Metadata only; use **Play to Explore** so tracks appear via the queue
+- **Home visualizer** — Driven by `/me/player/queue`
+- **Auth** — Authorization Code with PKCE (no client secret in the client)
+- **Rate limits** — `429` responses honor `Retry-After`
+
+---
+
+## Releases
+
+Pushing a version tag (`v1.2.1`, etc.) runs GitHub Actions to build macOS (universal) and Windows installers and open a **draft** GitHub Release.
+
+```bash
+git tag v1.2.1
+git push origin v1.2.1
+```
+
+Content is from Spotify. Always attribute Spotify when sharing Covify.
