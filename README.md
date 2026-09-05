@@ -1,8 +1,12 @@
-# Covify 3D
+# Covify
 
-Covify is an interactive 3D Spotify visualizer. It renders your **active Spotify queue** as album-art covers in a floating sphere (or a falling-card “drop” layout), and lets you search playlists, open them in detail, and control playback from the same UI.
+**Version `1.2.1`** · Interactive 3D Spotify album-art visualizer
 
-**Current version:** `1.2.1`
+Covify connects to your Spotify account and renders your **active playback queue** as interactive album covers in WebGL — primarily a floating **Fibonacci sphere**, with an alternate **drop cascade** layout. You can search the global playlist catalog, open playlists in detail (sphere or list), add tracks to the queue, and control playback from the same dark, Spotify-styled UI.
+
+Runs in the browser (Vite) or as a native desktop app (Tauri 2) for macOS and Windows.
+
+---
 
 ## Screenshots
 
@@ -19,61 +23,127 @@ Covify is an interactive 3D Spotify visualizer. It renders your **active Spotify
 
 ## How it works
 
-The **home sphere always visualizes your Spotify queue**, not a library playlist by itself. When you play a playlist from the sidebar or search, Spotify starts that playlist and Covify reloads the queue into the 3D scene.
-
-- **Sphere** is the primary experience (drag to orbit, scroll to zoom, hover to play).
-- **Drop** is an alternate 3D layout.
-- **List** is a secondary overlay for browsing the same tracks as a normal track list.
-
----
-
-## Requirements
-
-1. **Spotify Premium** — Web API playback control requires Premium.
-2. **Active player** — Spotify must be open somewhere (desktop, phone, or web) so Covify has a device to control.
-3. **Desktop helper** — In the Tauri app, Covify tries to open the Spotify desktop app on launch (macOS / Windows).
+| Concept | Behavior |
+|---------|----------|
+| **Home visualizer** | Always driven by Spotify’s **Current Queue** (`/me/player/queue`), not by whichever library playlist you last clicked. |
+| **Sphere (primary)** | Golden-angle distribution of album art on a sphere. Drag to orbit, scroll to zoom, auto-rotate on. |
+| **Drop** | Alternate 3D layout — covers fall into a loose grid with bounce. |
+| **List (secondary)** | Overlay listing the same tracks currently in the scene. Sphere remains the main experience. |
+| **Playing a playlist** | Starts that playlist on Spotify, then reloads the queue into the sphere so the 3D view stays in sync. |
+| **Non-owned playlists** | Spotify Dev Mode only returns track items for playlists you own/collaborate on. Covify uses **Play to Explore**: play first, then fill the sphere from the queue. |
 
 ---
 
 ## Features
 
-- **3D album sphere** — Queue covers on a golden-angle sphere with orbit, zoom, hover play, and a now-playing equalizer overlay
-- **Drop cascade** — Alternate physics-style falling-card layout
-- **Secondary List view** — Browse current sphere tracks as a list; return to Sphere anytime
-- **Playlist search** — Search Spotify’s catalog, paginate results, open any playlist
-- **Playlist detail** — Sphere or list for owned/collaborative playlists; **Play to Explore** for others (API restriction)
-- **Current Queue** — Sidebar entry opens the live queue in its own sphere/list detail view
-- **Add to queue** — `+` on list rows queues a track on Spotify
-- **Now playing bar** — Play/pause, skip, seek with hover timestamps
-- **Enlarged cover** — Click art to zoom in and play that track
-- **PKCE OAuth** — Secure Spotify login with no client secret in the app
+### Visualization
+- **3D Sphere** — Fibonacci / golden-angle layout, billboarded covers, orbit + zoom
+- **Drop cascade** — Physics-style fall with settle / float
+- **Now-playing equalizer** — Animated bars overlaid on the active cover in the scene
+- **Larger art** when viewing playlist/queue detail spheres (`artScale` boost)
+- **Starfield** backdrop and accent lighting
+
+### Library & search
+- **Sidebar** — Profile, disconnect, search, Current Queue, My Playlists
+- **Global playlist search** — Debounced search against Spotify’s catalog (10 results per page, Load More)
+- **Current Queue** — Opens a dedicated detail view of the live queue (includes currently playing track when missing from the queue API list)
+- **My Playlists** — Collapsible list; click to open detail; hover play starts the playlist
+
+### Playlist detail
+- Header with cover, owner, track count
+- **Sphere | List** toggle (Sphere default / primary)
+- Owned playlists: full track load via `/playlists/{id}/items`
+- Others: **Play to Explore** flow
+- **Add to queue** (`+`) on list rows with toast feedback
+- Escape / back restores the home queue sphere
+
+### Playback
+- Now-playing bar: art, title, artists, play/pause, prev/next, seek with hover time tooltip
+- ~4s Spotify state polling + local progress interpolation (~20 Hz)
+- Optimistic UI for controls; short sync suspension after actions
+- Idle “Start Playback” prompt when nothing is playing
+- Enlarged cover overlay (click art → details + play)
+
+### Desktop (Tauri)
+- Native window (1100×720, min 800×600)
+- Deep link scheme `covify://` for OAuth callback
+- Opens Spotify desktop app on launch (macOS / Windows), then refocuses Covify
+- Single-instance plugin
 
 ---
 
-## Stack
+## Tech stack
 
-| Layer | Tech |
-|-------|------|
-| UI | Alpine.js, Tailwind CSS v4 |
-| 3D | Three.js |
-| Build | Vite 8 |
-| Desktop | Tauri 2 (Rust) |
-| Auth | Spotify Authorization Code + PKCE |
+| Layer | Technology | Notes |
+|-------|------------|--------|
+| UI | Alpine.js 3, Tailwind CSS v4 | Single-page `index.html` + global Alpine store |
+| 3D | Three.js | OrbitControls, WebGL canvas |
+| Bundler | Vite 8 | Binds to `127.0.0.1:5173`; vendor code-split (three / alpine / tauri) |
+| Desktop | Tauri 2 + Rust 2021 | Deep link, shell, store, single-instance |
+| Auth | Spotify OAuth PKCE | No client secret in the client |
+| API | Spotify Web API v1 | Queue, playlists, search, playback |
+
+Identifier: `com.sammit.covify`
 
 ---
 
-## Setup
+## Project structure
 
-### 1. Spotify Developer Dashboard
+```text
+Covify/
+├── index.html                 # Auth screen + main UI (Alpine templates)
+├── package.json               # Scripts & JS dependencies (v1.2.1)
+├── vite.config.js             # Dev server, Tailwind plugin, chunk splitting
+├── .env.example               # VITE_SPOTIFY_CLIENT_ID
+├── README.md
+├── SYSTEM_ARCHITECTURE.md     # Deep technical blueprint
+├── Screenshots/               # App screenshots
+│
+├── src/
+│   ├── main.js                # Alpine store: auth, queue, search, playback, views
+│   ├── style.css              # Design tokens + component styles
+│   ├── spotify/
+│   │   ├── auth.js            # PKCE OAuth, token storage/refresh
+│   │   └── api.js             # Spotify fetch wrapper + endpoints
+│   └── three/
+│       └── sphere.js          # Scene, sphere/drop layouts, raycast, equalizer
+│
+├── src-tauri/                 # Native shell
+│   ├── tauri.conf.json
+│   ├── Cargo.toml
+│   ├── capabilities/default.json
+│   └── src/lib.rs             # Spotify launch, covify:// OAuth protocol
+│
+└── .github/workflows/
+    └── release.yml            # Tag-triggered macOS + Windows draft releases
+```
 
-Create an app and set these **Redirect URIs** (do not use `http://localhost`):
+For math, event bus details, and reproduction notes, see [`SYSTEM_ARCHITECTURE.md`](./SYSTEM_ARCHITECTURE.md).
+
+---
+
+## Requirements
+
+1. **Spotify Premium** — Required for Web API playback control.
+2. **Active Spotify player** — Desktop, mobile, or web player must be available as a device.
+3. **Node.js** (LTS recommended) for frontend / Tauri builds.
+4. **Rust** toolchain for `npm run tauri` / desktop builds.
+
+---
+
+## Spotify Developer setup
+
+1. Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
+2. Add these **Redirect URIs** exactly (do **not** use `http://localhost`):
 
 | Mode | Redirect URI |
 |------|----------------|
-| Browser / Vite | `http://127.0.0.1:5173/callback` |
+| Browser (Vite) | `http://127.0.0.1:5173/callback` |
 | Desktop (Tauri) | `covify://callback` |
 
-Scopes used by Covify:
+3. Copy your **Client ID** into `.env` (see below).
+
+### OAuth scopes
 
 ```text
 user-read-playback-state
@@ -84,100 +154,142 @@ playlist-read-collaborative
 user-library-read
 ```
 
-### 2. Environment
+Auth flow: **Authorization Code with PKCE**. Tokens live in `localStorage` with automatic refresh; logout clears them.
 
-Copy `.env.example` to `.env` and add your Client ID:
+---
+
+## Setup & run
+
+### 1. Environment
+
+```bash
+cp .env.example .env
+```
 
 ```env
 VITE_SPOTIFY_CLIENT_ID=your_spotify_client_id_here
 ```
 
-### 3. Install
+### 2. Install
 
 ```bash
 npm install
 ```
 
-### 4. Run
+### 3. Scripts
 
-**Browser**
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Vite only (used by Tauri’s `beforeDevCommand`) |
+| `npm run dev:local` | Vite + open `http://127.0.0.1:5173` |
+| `npm run build` | Production frontend → `dist/` |
+| `npm run preview` | Preview production build |
+| `npm run tauri` | Tauri CLI (`tauri dev`, `tauri build`, …) |
+| `npm run tauri dev` | Desktop app in development |
+| `npm run tauri build` | Native installers under `src-tauri/target/release/bundle/` |
 
-```bash
-npm run dev:local
-```
-
-Opens `http://127.0.0.1:5173`.
-
-**Desktop (dev)**
-
-```bash
-npm run tauri dev
-```
-
-**Desktop installer (production)**
-
-```bash
-npm run tauri build
-```
-
-Installers land in `src-tauri/target/release/bundle/` (`.dmg` / `.app` on macOS, `.msi` / `.exe` on Windows).
-
-Other scripts: `npm run build` (Vite production), `npm run preview`.
+**Browser:** `npm run dev:local`  
+**Desktop:** `npm run tauri dev`  
+**Installers:** macOS `.dmg` / `.app` (universal in CI), Windows `.msi` / `.exe`
 
 ---
 
 ## Controls
 
-### Mouse / UI
+### Mouse & UI
 
-| Action | How |
-|--------|-----|
-| Orbit | Drag on the scene |
-| Zoom | Scroll |
-| Play a cover | Hover → green play button |
+| Action | Control |
+|--------|---------|
+| Orbit | Drag background |
+| Zoom | Scroll wheel |
+| Play cover | Hover → green play button |
 | Enlarge cover | Click album art |
 | Sphere / Drop | Top-right **SPHERE** / **DROP** |
-| List (secondary) | Top-right **List** |
-| Seek | Click the now-playing progress bar |
-| Search | Sidebar search field |
-| Open playlist | Click a search result or library playlist |
-| Current Queue | Click **Current Queue** in the sidebar |
-| Add to queue | `+` in list view |
-| Refresh | Top-right **REFRESH** |
+| Track list | Top-right **List** (secondary) |
+| Seek | Click now-playing progress bar |
+| Search playlists | Sidebar search |
+| Open playlist | Click search result or My Playlist row |
+| Current Queue detail | Click **Current Queue** |
+| Play playlist | Hover play on a library playlist, or **Play** in detail |
+| Add to queue | `+` in list views |
+| Refresh all | Top-right **REFRESH** |
+| Disconnect | Logout icon in sidebar |
 
 ### Keyboard
+
+Ignored while focus is in the search input.
 
 | Key | Action |
 |-----|--------|
 | `Space` | Play / pause |
-| `←` / `→` | Previous / next track |
+| `←` / `→` | Previous / next |
 | `M` | Toggle Sphere ↔ Drop |
 | `Esc` | Close enlarged view or playlist detail |
 
-Shortcuts are ignored while typing in the search field.
+---
+
+## Spotify API surface
+
+Covify uses these Web API areas (via `src/spotify/api.js`):
+
+| Area | Endpoints / notes |
+|------|-------------------|
+| Profile | `GET /me` |
+| Library playlists | `GET /me/playlists` |
+| Playlist items | `GET /playlists/{id}/items` (owned/collaborative only) |
+| Search | `GET /search?type=playlist` — **max limit 10** (Feb 2026 Dev Mode) |
+| Queue | `GET /me/player/queue`, `POST /me/player/queue` |
+| Playback | `GET /me/player`, play/pause/next/previous/seek |
+
+Client behavior:
+- **401** → refresh access token and retry
+- **429** → wait `Retry-After` and retry
+- **403** on playlist items → treat as non-owned / Play to Explore
+
+### Dev Mode limitations (Feb 2026)
+
+- Search page size capped at **10**
+- Playlist **items** only for playlists you own or collaborate on
+- Non-owned playlists: metadata only until you play them and load the queue
+- Development Mode apps also have Spotify’s account/user quotas (Premium owner, limited users unless Extended Quota)
 
 ---
 
-## Spotify API notes (Dev Mode)
+## Releases (GitHub)
 
-Covify targets the Spotify Web API under **February 2026 Development Mode** limits:
+Pushing a version tag matching `v*` runs [`.github/workflows/release.yml`](./.github/workflows/release.yml):
 
-- **Search** — Max 10 results per request (paginated with Load More)
-- **Playlist tracks** — `/playlists/{id}/items` only for playlists you **own or collaborate on**
-- **Other playlists** — Metadata only; use **Play to Explore** so tracks appear via the queue
-- **Home visualizer** — Driven by `/me/player/queue`
-- **Auth** — Authorization Code with PKCE (no client secret in the client)
-- **Rate limits** — `429` responses honor `Retry-After`
-
----
-
-## Releases
-
-Pushing a version tag (`v1.2.1`, etc.) runs GitHub Actions to build macOS (universal) and Windows installers and open a **draft** GitHub Release.
+- Builds **macOS** (universal) and **Windows**
+- Creates a **draft** GitHub Release with installers
 
 ```bash
+git add -A
+git commit -m "release: describe changes"
+git push origin main
 git tag v1.2.1
 git push origin v1.2.1
 ```
 
-Content is from Spotify. Always attribute Spotify when sharing Covify.
+Then open the draft under **Releases**, review assets/notes, and publish.
+
+Keep `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` version fields in sync with the tag.
+
+---
+
+## Design tokens
+
+Spotify-inspired dark theme (`src/style.css`):
+
+| Token | Value | Use |
+|-------|-------|-----|
+| Surface / panel | `#121212` | Background |
+| Card | `#181818` | Bars, overlays |
+| Accent | `#1ed760` | CTAs, progress, play |
+| Muted | `#b3b3b3` | Secondary text |
+| Border | `#4d4d4d` | Hairlines |
+
+---
+
+## Attribution
+
+Music metadata and album art are provided by Spotify. Covify is a third-party client that uses the Spotify Web API; it is not affiliated with Spotify AB. Comply with the [Spotify Developer Terms](https://developer.spotify.com/terms) when redistributing or modifying this project.
